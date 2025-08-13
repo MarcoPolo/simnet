@@ -29,8 +29,6 @@ func (r *testRouter) AddNode(addr net.Addr, receiver PacketReceiver) {
 	r.onRecv = receiver.RecvPacket
 }
 
-const Mibps = 1_000_000
-
 func TestBandwidthLimiterAndLatency_synctest(t *testing.T) {
 	synctest.Run(func() {
 		for _, testUpload := range []bool{true, false} {

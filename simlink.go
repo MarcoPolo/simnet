@@ -10,6 +10,8 @@ import (
 	"golang.org/x/time/rate"
 )
 
+const Mibps = 1_000_000
+
 // Creates a new RateLimiter with the following parameters:
 // bandwidth (in bits/sec).
 // burstSize is in Bytes
