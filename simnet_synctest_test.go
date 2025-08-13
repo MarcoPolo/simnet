@@ -1,4 +1,4 @@
-//go:build goexperiment.synctest
+//go:build go1.25
 
 package simnet
 
@@ -20,8 +20,8 @@ func newConn(simnet *Simnet, address *net.UDPAddr, linkSettings NodeBiDiLinkSett
 	return simnet.NewEndpoint(address, linkSettings)
 }
 
-func TestSimpleSimNet_synctest(t *testing.T) {
-	synctest.Run(func() {
+func TestSimnetWIthSynctest(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
 		router := &Simnet{}
 
 		const bandwidth = 10 * oneMbps
@@ -69,8 +69,8 @@ func TestSimpleSimNet_synctest(t *testing.T) {
 	})
 }
 
-func TestSimNetBandwidth_synctest(t *testing.T) {
-	synctest.Run(func() {
+func TestSimnetBandwidthWithSynctest(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
 		router := &Simnet{}
 
 		const bandwidth = 40 * oneMbps
