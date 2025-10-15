@@ -1,5 +1,3 @@
-//go:build goexperiment.synctest
-
 package simnet
 
 import (
@@ -30,16 +28,16 @@ func (r *testRouter) AddNode(addr net.Addr, receiver PacketReceiver) {
 }
 
 func TestBandwidthLimiterAndLatency_synctest(t *testing.T) {
-	synctest.Run(func() {
-		for _, testUpload := range []bool{true, false} {
-			t.Run(fmt.Sprintf("testing upload=%t", testUpload), func(t *testing.T) {
+	for _, testUpload := range []bool{true, false} {
+		t.Run(fmt.Sprintf("testing upload=%t", testUpload), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
 				const expectedSpeed = 10 * Mibps
 				const expectedLatency = 10 * time.Millisecond
 				const MTU = 1400
 				linkSettings := LinkSettings{
 					BitsPerSecond: expectedSpeed,
 					MTU:           MTU,
-					Latency:       expectedLatency,
+					LatencyFunc:   func(p Packet) time.Duration { return expectedLatency },
 				}
 
 				recvStartTimeChan := make(chan time.Time, 1)
@@ -113,8 +111,8 @@ func TestBandwidthLimiterAndLatency_synctest(t *testing.T) {
 					t.Fatalf("observed speed %f Mbps is too far from expected speed %d Mbps. Percent error: %f", observedSpeed/Mibps, expectedSpeed/Mibps, percentErrorSpeed)
 				}
 			})
-		}
-	})
+		})
+	}
 }
 
 type linkAdapter struct {
@@ -135,7 +133,7 @@ func (c *linkAdapter) SendPacket(p Packet) error {
 }
 
 func TestBandwidthLimiterAndLatencyConnectedLinks_synctest(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		const expectedSpeed = 100 * Mibps
 		const latencyOfOneLink = 10 * time.Millisecond
 		const expectedLatency = 2 * latencyOfOneLink
@@ -143,7 +141,7 @@ func TestBandwidthLimiterAndLatencyConnectedLinks_synctest(t *testing.T) {
 		linkSettings := LinkSettings{
 			BitsPerSecond: expectedSpeed,
 			MTU:           MTU,
-			Latency:       latencyOfOneLink,
+			LatencyFunc:   func(p Packet) time.Duration { return latencyOfOneLink },
 		}
 
 		recvStartTimeChan := make(chan time.Time, 1)
