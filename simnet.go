@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"time"
 )
 
 // Simnet is a simulated network that manages connections between nodes
@@ -21,6 +22,15 @@ type NodeBiDiLinkSettings struct {
 	Downlink LinkSettings
 	// Uplink configures the settings for outgoing traffic from this node
 	Uplink LinkSettings
+
+	// Latency specifies a fixed network delay for downlink packets only
+	// If both Latency and LatencyFunc are set, LatencyFunc takes precedence
+	Latency time.Duration
+
+	// LatencyFunc computes the network delay for each downlink packet
+	// This allows variable latency based on packet source/destination
+	// If nil, Latency field is used instead
+	LatencyFunc func(Packet) time.Duration
 }
 
 func (n *Simnet) Start() error {
@@ -48,6 +58,8 @@ func (n *Simnet) NewEndpoint(addr *net.UDPAddr, linkSettings NodeBiDiLinkSetting
 	link := &SimulatedLink{
 		DownlinkSettings: linkSettings.Downlink,
 		UplinkSettings:   linkSettings.Uplink,
+		Latency:          linkSettings.Latency,
+		LatencyFunc:      linkSettings.LatencyFunc,
 		UploadPacket:     &n.router,
 	}
 	c := NewBlockingSimConn(addr, link)

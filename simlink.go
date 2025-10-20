@@ -31,15 +31,6 @@ type LinkSettings struct {
 	// BitsPerSecond specifies the bandwidth limit in bits per second
 	BitsPerSecond int
 
-	// Latency specifies a fixed network delay for all packets
-	// If both Latency and LatencyFunc are set, LatencyFunc takes precedence
-	Latency time.Duration
-
-	// LatencyFunc computes the network delay for each packet
-	// This allows variable latency based on packet source/destination
-	// If nil, Latency field is used instead
-	LatencyFunc func(Packet) time.Duration
-
 	// MTU (Maximum Transmission Unit) specifies the maximum packet size in bytes
 	MTU int
 }
@@ -62,6 +53,15 @@ type SimulatedLink struct {
 	// Configuration for link characteristics
 	UplinkSettings   LinkSettings
 	DownlinkSettings LinkSettings
+
+	// Latency specifies a fixed network delay for downlink packets
+	// If both Latency and LatencyFunc are set, LatencyFunc takes precedence
+	Latency time.Duration
+
+	// LatencyFunc computes the network delay for each downlink packet
+	// This allows variable latency based on packet source/destination
+	// If nil, Latency field is used instead
+	LatencyFunc func(Packet) time.Duration
 
 	// Packet routing interfaces
 	UploadPacket   Router
@@ -185,14 +185,8 @@ func (l *SimulatedLink) SendPacket(p Packet) error {
 		return nil
 	}
 
-	// Calculate delivery time based on latency
-	var latency time.Duration
-	if l.UplinkSettings.LatencyFunc != nil {
-		latency = l.UplinkSettings.LatencyFunc(p)
-	} else {
-		latency = l.UplinkSettings.Latency
-	}
-	deliveryTime := time.Now().Add(latency)
+	// Uplink has no latency - packets are delivered immediately
+	deliveryTime := time.Now()
 
 	// Enqueue packet with delivery time to CoDel queue
 	// Rate limiting happens after dequeue in background goroutine
@@ -210,12 +204,12 @@ func (l *SimulatedLink) RecvPacket(p Packet) {
 		return
 	}
 
-	// Calculate delivery time based on latency
+	// Calculate delivery time based on downlink latency
 	var latency time.Duration
-	if l.DownlinkSettings.LatencyFunc != nil {
-		latency = l.DownlinkSettings.LatencyFunc(p)
+	if l.LatencyFunc != nil {
+		latency = l.LatencyFunc(p)
 	} else {
-		latency = l.DownlinkSettings.Latency
+		latency = l.Latency
 	}
 	deliveryTime := time.Now().Add(latency)
 

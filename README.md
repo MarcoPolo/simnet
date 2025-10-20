@@ -37,8 +37,9 @@ import (
 func main() {
     n := &simnet.Simnet{}
     settings := simnet.NodeBiDiLinkSettings{
-        Downlink: simnet.LinkSettings{BitsPerSecond: 10 * simnet.Mibps, Latency: 5 * time.Millisecond},
-        Uplink:   simnet.LinkSettings{BitsPerSecond: 10 * simnet.Mibps, Latency: 5 * time.Millisecond},
+        Downlink: simnet.LinkSettings{BitsPerSecond: 10 * simnet.Mibps},
+        Uplink:   simnet.LinkSettings{BitsPerSecond: 10 * simnet.Mibps},
+        Latency:  5 * time.Millisecond,
     }
 
     addrA := &net.UDPAddr{IP: net.ParseIP("1.0.0.1"), Port: 9001}
@@ -71,10 +72,13 @@ func main() {
 
 - **`LinkSettings`**
   - `BitsPerSecond int`: bandwidth cap (bits/sec)
-  - `Latency time.Duration`: one-way latency per packet
   - `MTU int`: maximum packet size (bytes). Oversized packets are dropped
+- **`NodeBiDiLinkSettings`**
+  - `Downlink LinkSettings`: settings for incoming traffic
+  - `Uplink LinkSettings`: settings for outgoing traffic
+  - `Latency time.Duration`: one-way latency for downlink packets
+  - `LatencyFunc func(Packet) time.Duration`: optional function to compute variable latency per downlink packet
 - Use `simnet.Mibps` for convenience when computing bitrates
-- `NodeBiDiLinkSettings` lets you set separate `Downlink` and `Uplink`
 
 ### Routers
 

@@ -15,8 +15,9 @@ func ExampleSimnet_echo() {
 	// Create the simulated network and two endpoints
 	n := &simnet.Simnet{}
 	settings := simnet.NodeBiDiLinkSettings{
-		Downlink: simnet.LinkSettings{BitsPerSecond: 10 * simnet.Mibps, Latency: 5 * time.Millisecond},
-		Uplink:   simnet.LinkSettings{BitsPerSecond: 10 * simnet.Mibps, Latency: 5 * time.Millisecond},
+		Downlink: simnet.LinkSettings{BitsPerSecond: 10 * simnet.Mibps},
+		Uplink:   simnet.LinkSettings{BitsPerSecond: 10 * simnet.Mibps},
+		Latency:  5 * time.Millisecond,
 	}
 
 	addrA := &net.UDPAddr{IP: net.ParseIP("1.0.0.1"), Port: 9001}
@@ -63,8 +64,9 @@ func TestSimnet_pingWithDelay(t *testing.T) {
 		n := &simnet.Simnet{}
 		latency := 400 * time.Millisecond
 		settings := simnet.NodeBiDiLinkSettings{
-			Downlink: simnet.LinkSettings{BitsPerSecond: 10 * simnet.Mibps, Latency: latency / 2},
-			Uplink:   simnet.LinkSettings{BitsPerSecond: 10 * simnet.Mibps, Latency: latency / 2},
+			Downlink: simnet.LinkSettings{BitsPerSecond: 10 * simnet.Mibps},
+			Uplink:   simnet.LinkSettings{BitsPerSecond: 10 * simnet.Mibps},
+			Latency:  latency / 2, // Each endpoint has downlink latency, so RTT = 2 * (latency/2) = latency
 		}
 
 		addrA := &net.UDPAddr{IP: net.ParseIP("1.0.0.1"), Port: 9001}
