@@ -1,6 +1,7 @@
 package simnet
 
 import (
+	"container/heap"
 	"math"
 	"sync"
 	"time"
@@ -9,7 +10,7 @@ import (
 // codelQueue is a FIFO queue with CoDel bufferbloat control
 type codelQueue struct {
 	mu        sync.Mutex
-	packets   []*packetWithDeliveryTime
+	packets   packetHeap
 	newPacket chan struct{}
 	closed    bool
 
@@ -29,6 +30,7 @@ func newCodelQueue(target, interval time.Duration) *codelQueue {
 		interval:  interval,
 		newPacket: make(chan struct{}, 1),
 	}
+	heap.Init(&q.packets)
 	return q
 }
 
@@ -39,7 +41,7 @@ func (q *codelQueue) Enqueue(p *packetWithDeliveryTime) {
 	if q.closed {
 		return
 	}
-	q.packets = append(q.packets, p)
+	heap.Push(&q.packets, p)
 
 	// Signal that a new packet arrived (non-blocking)
 	select {
@@ -69,21 +71,15 @@ func (q *codelQueue) Dequeue() (*packetWithDeliveryTime, bool) {
 			q.mu.Unlock()
 			select {
 			case <-q.newPacket:
+				timer.Stop()
 				continue
 			case <-timer.C:
 				continue
 			}
 		}
 
-		// Find packet with earliest delivery time
-		earliestIdx := 0
-		earliestTime := q.packets[0].DeliveryTime
-		for i := 1; i < len(q.packets); i++ {
-			if q.packets[i].DeliveryTime.Before(earliestTime) {
-				earliestIdx = i
-				earliestTime = q.packets[i].DeliveryTime
-			}
-		}
+		earliest := q.packets[0]
+		earliestTime := earliest.DeliveryTime
 
 		now := time.Now()
 		if now.Before(earliestTime) {
@@ -104,8 +100,7 @@ func (q *codelQueue) Dequeue() (*packetWithDeliveryTime, bool) {
 		}
 
 		// Packet is ready, remove from queue and return it
-		p := q.packets[earliestIdx]
-		q.packets = append(q.packets[:earliestIdx], q.packets[earliestIdx+1:]...)
+		p := heap.Pop(&q.packets).(*packetWithDeliveryTime)
 
 		// Reset CoDel state when queue becomes empty
 		if len(q.packets) == 0 {
@@ -180,4 +175,29 @@ func (q *codelQueue) Close() {
 	defer q.mu.Unlock()
 	q.closed = true
 	close(q.newPacket)
+}
+
+// packetHeap implements heap.Interface ordered by packet delivery time.
+type packetHeap []*packetWithDeliveryTime
+
+func (h packetHeap) Len() int { return len(h) }
+
+func (h packetHeap) Less(i, j int) bool {
+	return h[i].DeliveryTime.Before(h[j].DeliveryTime)
+}
+
+func (h packetHeap) Swap(i, j int) {
+	h[i], h[j] = h[j], h[i]
+}
+
+func (h *packetHeap) Push(x any) {
+	*h = append(*h, x.(*packetWithDeliveryTime))
+}
+
+func (h *packetHeap) Pop() any {
+	old := *h
+	n := len(old)
+	item := old[n-1]
+	*h = old[:n-1]
+	return item
 }
