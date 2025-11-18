@@ -2,6 +2,7 @@ package simnet
 
 import (
 	"errors"
+	"hash/maphash"
 	"net"
 	"slices"
 	"sync"
@@ -26,6 +27,13 @@ type Packet struct {
 	To   net.Addr
 	From net.Addr
 	buf  []byte
+}
+
+func (p *Packet) Hash(h *maphash.Hash) uint64 {
+	h.Reset()
+	h.WriteString(p.To.String())
+	h.WriteString(p.From.String())
+	return h.Sum64()
 }
 
 // SimConn is a simulated network connection that implements net.PacketConn. It
