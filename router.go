@@ -1,6 +1,7 @@
 package simnet
 
 import (
+	"container/heap"
 	"errors"
 	"fmt"
 	"net"
@@ -122,32 +123,63 @@ func (r *PerfectRouter) RemoveNode(addr net.Addr) {
 
 var _ Router = &PerfectRouter{}
 
-type DelayedPacketReciever struct {
-	inner PacketReceiver
-	delay time.Duration
-}
-
-func (r *DelayedPacketReciever) RecvPacket(p Packet) {
-	time.AfterFunc(r.delay, func() { r.inner.RecvPacket(p) })
-}
-
-type FixedLatencyRouter struct {
+type VariableLatencyRouter struct {
 	PerfectRouter
-	latency time.Duration
+	LatencyFunc func(packet *Packet) time.Duration
+	CloseSignal chan struct{}
+
+	packets     chan Packet
+	packetCount int
+	h           packetHeap
 }
 
-func (r *FixedLatencyRouter) SendPacket(p Packet) error {
-	return r.PerfectRouter.SendPacket(p)
+func (r *VariableLatencyRouter) SendPacket(p Packet) error {
+	r.packets <- p
+	return nil
 }
 
-func (r *FixedLatencyRouter) AddNode(addr net.Addr, conn PacketReceiver) {
-	r.PerfectRouter.AddNode(addr, &DelayedPacketReciever{
-		inner: conn,
-		delay: r.latency,
+func (r *VariableLatencyRouter) Start(wg *sync.WaitGroup) {
+	r.packets = make(chan Packet, 128)
+	heap.Init(&r.h)
+
+	wg.Go(func() {
+		var nextDelivery time.Time
+		deliveryTimer := time.NewTimer(0)
+		deliveryTimer.Stop()
+
+		for {
+			select {
+			case <-r.CloseSignal:
+				return
+			case p := <-r.packets:
+				r.packetCount++
+				latency := r.LatencyFunc(&p)
+				deliveryTime := time.Now().Add(latency)
+				heap.Push(&r.h, packetWithDeliveryTimeAndOrder{
+					Packet:       &p,
+					order:        r.packetCount,
+					deliveryTime: deliveryTime,
+				})
+				if nextDelivery.IsZero() || deliveryTime.Before(nextDelivery) {
+					nextDelivery = deliveryTime
+					deliveryTimer.Reset(latency)
+				}
+			case <-deliveryTimer.C:
+				now := time.Now()
+				for len(r.h) > 0 && !r.h[0].deliveryTime.After(now) {
+					p := heap.Pop(&r.h).(packetWithDeliveryTimeAndOrder).Packet
+					r.PerfectRouter.SendPacket(*p)
+				}
+				if len(r.h) > 0 {
+					nextDelivery = r.h[0].deliveryTime
+					deliveryTimer.Reset(nextDelivery.Sub(now))
+				} else {
+					nextDelivery = time.Time{}
+				}
+			}
+		}
 	})
 }
-
-var _ Router = &FixedLatencyRouter{}
 
 type simpleNodeFirewall struct {
 	mu                sync.Mutex
