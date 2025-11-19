@@ -17,7 +17,7 @@ func TestVariableLatencyRouterDelaysPackets(t *testing.T) {
 		}, receiver)
 
 		sendTime := time.Now()
-		router.SendPacket(Packet{From: from, To: to, buf: []byte{0x1}})
+		router.RecvPacket(Packet{From: from, To: to, buf: []byte{0x1}})
 
 		delivery := receiver.waitFor(t)
 		delay := delivery.arrival.Sub(sendTime)
@@ -44,9 +44,9 @@ func TestVariableLatencyRouterAllowsReordering(t *testing.T) {
 			return 5 * time.Millisecond
 		}, receiver)
 
-		router.SendPacket(Packet{From: from, To: to, buf: []byte{1}})
+		router.RecvPacket(Packet{From: from, To: to, buf: []byte{1}})
 		time.Sleep(10 * time.Millisecond)
-		router.SendPacket(Packet{From: from, To: to, buf: []byte{2}})
+		router.RecvPacket(Packet{From: from, To: to, buf: []byte{2}})
 
 		first := receiver.waitFor(t)
 		second := receiver.waitFor(t)
@@ -67,8 +67,8 @@ func TestVariableLatencyRouterKeepsOrderWithEqualLatency(t *testing.T) {
 			return latency
 		}, receiver)
 
-		router.SendPacket(Packet{From: from, To: to, buf: []byte{1}})
-		router.SendPacket(Packet{From: from, To: to, buf: []byte{2}})
+		router.RecvPacket(Packet{From: from, To: to, buf: []byte{1}})
+		router.RecvPacket(Packet{From: from, To: to, buf: []byte{2}})
 
 		first := receiver.waitFor(t)
 		second := receiver.waitFor(t)

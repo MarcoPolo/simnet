@@ -14,12 +14,14 @@ import (
 
 // Example showing a simple echo using Simnet and the returned net.PacketConn.
 func ExampleSimnet_echo() {
+
 	// Create the simulated network and two endpoints
-	n := &simnet.Simnet{}
+	n := &simnet.Simnet{
+		LatencyFunc: simnet.StaticLatency(5 * time.Millisecond),
+	}
 	settings := simnet.NodeBiDiLinkSettings{
 		Downlink: simnet.LinkSettings{BitsPerSecond: 10 * simnet.Mibps},
 		Uplink:   simnet.LinkSettings{BitsPerSecond: 10 * simnet.Mibps},
-		Latency:  5 * time.Millisecond,
 	}
 
 	addrA := &net.UDPAddr{IP: net.ParseIP("1.0.0.1"), Port: 9001}
@@ -28,7 +30,7 @@ func ExampleSimnet_echo() {
 	client := n.NewEndpoint(addrA, settings)
 	server := n.NewEndpoint(addrB, settings)
 
-	_ = n.Start()
+	n.Start()
 	defer n.Close()
 
 	// Simple echo server using the returned PacketConn
@@ -36,7 +38,7 @@ func ExampleSimnet_echo() {
 	go func() {
 		defer close(done)
 		buf := make([]byte, 1024)
-		server.SetReadDeadline(time.Now().Add(2 * time.Second))
+		server.SetReadDeadline(time.Now().Add(1 * time.Second))
 		n, src, err := server.ReadFrom(buf)
 		if err != nil {
 			return
@@ -46,7 +48,11 @@ func ExampleSimnet_echo() {
 
 	// Client sends a message and waits for the echo response
 	client.SetReadDeadline(time.Now().Add(2 * time.Second))
-	_, _ = client.WriteTo([]byte("ping"), addrB)
+	_, err := client.WriteTo([]byte("ping"), addrB)
+	if err != nil {
+		fmt.Println("Error writing to server:", err)
+		return
+	}
 
 	buf := make([]byte, 1024)
 	nRead, _, _ := client.ReadFrom(buf)
@@ -62,13 +68,16 @@ func ExampleSimnet_echo() {
 func TestSimnet_pingWithDelay(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 
+		const latency = 400 * time.Millisecond
 		// Create the simulated network and two endpoints
-		n := &simnet.Simnet{}
-		latency := 400 * time.Millisecond
+		n := &simnet.Simnet{
+			LatencyFunc: func(p *simnet.Packet) time.Duration {
+				return latency
+			},
+		}
 		settings := simnet.NodeBiDiLinkSettings{
 			Downlink: simnet.LinkSettings{BitsPerSecond: 10 * simnet.Mibps},
 			Uplink:   simnet.LinkSettings{BitsPerSecond: 10 * simnet.Mibps},
-			Latency:  latency / 2, // Each endpoint has downlink latency, so RTT = 2 * (latency/2) = latency
 		}
 
 		addrA := &net.UDPAddr{IP: net.ParseIP("1.0.0.1"), Port: 9001}
@@ -77,10 +86,7 @@ func TestSimnet_pingWithDelay(t *testing.T) {
 		client := n.NewEndpoint(addrA, settings)
 		server := n.NewEndpoint(addrB, settings)
 
-		err := n.Start()
-		if err != nil {
-			t.Fatalf("Failed to start simnet: %v", err)
-		}
+		n.Start()
 		defer n.Close()
 
 		// Simple echo server using the returned PacketConn
@@ -126,7 +132,7 @@ func TestSimnet_pingWithDelay(t *testing.T) {
 
 		// Client sends first ping
 		client.SetReadDeadline(time.Now().Add(1 * time.Second))
-		_, err = client.WriteTo([]byte("ping1"), addrB)
+		_, err := client.WriteTo([]byte("ping1"), addrB)
 		if err != nil {
 			t.Fatalf("Client failed to write ping1: %v", err)
 		}

@@ -1,17 +1,36 @@
 package simnet
 
 import (
-	"errors"
-	"fmt"
 	"net"
+	"sync"
 	"time"
 )
+
+func StaticLatency(duration time.Duration) func(*Packet) time.Duration {
+	return func(*Packet) time.Duration {
+		return duration
+	}
+}
 
 // Simnet is a simulated network that manages connections between nodes
 // with configurable network conditions.
 type Simnet struct {
-	router PerfectRouter
-	links  []*SimulatedLink
+	// LatencyFunc defines the latency added when routing a given packet.
+	// The latency is allowed to be dynamic and change packet to packet (which
+	// could lead to packet reordering).
+	//
+	// A simple use case can use `StaticLatency(duration)` to set a static
+	// latency for all packets.
+	//
+	// More complex use cases can define a latency map between endpoints and
+	// have this function return the expected latency.
+	LatencyFunc func(*Packet) time.Duration
+
+	started     bool
+	closeSignal chan struct{}
+	wg          sync.WaitGroup
+	router      VariableLatencyRouter
+	links       []*Simlink
 }
 
 // NodeBiDiLinkSettings defines the bidirectional link settings for a network node.
@@ -22,49 +41,47 @@ type NodeBiDiLinkSettings struct {
 	Downlink LinkSettings
 	// Uplink configures the settings for outgoing traffic from this node
 	Uplink LinkSettings
-
-	// Latency specifies a fixed network delay for downlink packets only
-	// If both Latency and LatencyFunc are set, LatencyFunc takes precedence
-	Latency time.Duration
-
-	// LatencyFunc computes the network delay for each downlink packet
-	// This allows variable latency based on packet source/destination
-	// If nil, Latency field is used instead
-	LatencyFunc func(Packet) time.Duration
 }
 
-func (n *Simnet) Start() error {
+// Start starts the simulated network and related goroutines
+func (n *Simnet) Start() {
+	n.started = true
+	n.router.LatencyFunc = n.LatencyFunc
+	n.router.CloseSignal = n.closeSignal
+	n.router.Start(&n.wg)
 	for _, link := range n.links {
-		link.Start()
+		link.Start(&n.wg)
 	}
-	return nil
 }
 
-func (n *Simnet) Close() error {
-	var errs error
-	for _, link := range n.links {
-		err := link.Close()
-		if err != nil {
-			errs = errors.Join(errs, err)
-		}
+func (n *Simnet) Close() {
+	close(n.closeSignal)
+	n.wg.Wait()
+}
+
+func (n *Simnet) init() {
+	if n.closeSignal == nil {
+		n.closeSignal = make(chan struct{})
 	}
-	if errs != nil {
-		return fmt.Errorf("failed to close some links: %w", errs)
-	}
-	return nil
 }
 
 func (n *Simnet) NewEndpoint(addr *net.UDPAddr, linkSettings NodeBiDiLinkSettings) *SimConn {
-	link := &SimulatedLink{
-		DownlinkSettings: linkSettings.Downlink,
-		UplinkSettings:   linkSettings.Uplink,
-		Latency:          linkSettings.Latency,
-		LatencyFunc:      linkSettings.LatencyFunc,
-		UploadPacket:     &n.router,
+	n.init()
+	if n.started {
+		panic("Must add endpoints before starting the network")
 	}
-	c := NewBlockingSimConn(addr, link)
+
+	c := NewBlockingSimConn(addr)
+	link := NewSimlink(
+		n.closeSignal,
+		linkSettings,
+		&n.router,
+		c,
+	)
+	c.SetUpPacketReceiver(link.up)
+	n.router.AddNode(addr, link.down)
 
 	n.links = append(n.links, link)
-	n.router.AddNode(addr, link)
+
 	return c
 }

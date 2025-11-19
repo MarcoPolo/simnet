@@ -3,7 +3,6 @@
 package simnet
 
 import (
-	"fmt"
 	"math"
 	"net"
 	"testing"
@@ -16,14 +15,8 @@ import (
 
 const oneMbps = 1_000_000
 
-func newConn(simnet *Simnet, address *net.UDPAddr, linkSettings NodeBiDiLinkSettings) *SimConn {
-	return simnet.NewEndpoint(address, linkSettings)
-}
-
-func TestSimnetWIthSynctest(t *testing.T) {
+func TestSimnetWithSynctest(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		router := &Simnet{}
-
 		const bandwidth = 10 * oneMbps
 		const latency = 10 * time.Millisecond
 		linkSettings := NodeBiDiLinkSettings{
@@ -33,22 +26,25 @@ func TestSimnetWIthSynctest(t *testing.T) {
 			Uplink: LinkSettings{
 				BitsPerSecond: bandwidth,
 			},
-			Latency: latency,
+		}
+
+		nw := &Simnet{
+			LatencyFunc: StaticLatency(latency),
 		}
 
 		addressA := net.UDPAddr{
 			IP:   net.ParseIP("1.0.0.1"),
 			Port: 8000,
 		}
-		connA := newConn(router, &addressA, linkSettings)
+		connA := nw.NewEndpoint(&addressA, linkSettings)
 		addressB := net.UDPAddr{
 			IP:   net.ParseIP("1.0.0.2"),
 			Port: 8000,
 		}
-		connB := newConn(router, &addressB, linkSettings)
+		connB := nw.NewEndpoint(&addressB, linkSettings)
 
-		router.Start()
-		defer router.Close()
+		nw.Start()
+		defer nw.Close()
 
 		start := time.Now()
 		connA.WriteTo([]byte("hello"), &addressB)
@@ -71,7 +67,6 @@ func TestSimnetWIthSynctest(t *testing.T) {
 
 func TestSimnetBandwidthWithSynctest(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		router := &Simnet{}
 
 		const bandwidth = 40 * oneMbps
 		const latency = 10 * time.Millisecond
@@ -85,23 +80,24 @@ func TestSimnetBandwidthWithSynctest(t *testing.T) {
 				BitsPerSecond: bandwidth,
 				MTU:           MTU,
 			},
-			Latency: latency,
+		}
+		nw := &Simnet{
+			LatencyFunc: StaticLatency(latency),
 		}
 
 		addressA := net.UDPAddr{
 			IP:   net.ParseIP("1.0.0.1"),
 			Port: 8000,
 		}
-		connA := newConn(router, &addressA, linkSettings)
+		connA := nw.NewEndpoint(&addressA, linkSettings)
 		addressB := net.UDPAddr{
 			IP:   net.ParseIP("1.0.0.2"),
 			Port: 8000,
 		}
-		connB := newConn(router, &addressB, linkSettings)
+		connB := nw.NewEndpoint(&addressB, linkSettings)
 
-		err := router.Start()
-		require.NoError(t, err)
-		defer router.Close()
+		nw.Start()
+		defer nw.Close()
 
 		readDone := make(chan struct{})
 
@@ -149,8 +145,8 @@ func TestSimnetBandwidthWithSynctest(t *testing.T) {
 
 		observedBandwidth := float64(bytesRead*8) / readDuration.Seconds()
 		expectedBandwidth := float64(bandwidth)
-		fmt.Println("sent bytes", bytesSent)
-		fmt.Println("Read bytes", bytesRead)
+		t.Log("sent bytes", bytesSent)
+		t.Log("Read bytes", bytesRead)
 		percentDiffBandwidth := math.Abs(observedBandwidth-expectedBandwidth) / expectedBandwidth
 		t.Logf("observed bandwidth: %v mbps, expected bandwidth: %v mbps, percent diff: %v", observedBandwidth/oneMbps, expectedBandwidth/oneMbps, percentDiffBandwidth)
 		if percentDiffBandwidth > 0.20 {

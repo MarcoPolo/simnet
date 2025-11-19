@@ -19,7 +19,7 @@ type PacketReceiver interface {
 // Router handles routing of packets between simulated connections.
 // Implementations are responsible for delivering packets to their destinations.
 type Router interface {
-	SendPacket(p Packet) error
+	PacketReceiver
 	AddNode(addr net.Addr, receiver PacketReceiver)
 }
 
@@ -46,12 +46,14 @@ type SimConn struct {
 	closedChan      chan struct{}
 	deadlineUpdated chan struct{}
 
+	link Simlink
+
 	packetsSent atomic.Uint64
 	packetsRcvd atomic.Uint64
 	bytesSent   atomic.Int64
 	bytesRcvd   atomic.Int64
 
-	router Router
+	upPacketReceiver PacketReceiver
 
 	myAddr        *net.UDPAddr
 	myLocalAddr   net.Addr
@@ -67,27 +69,29 @@ type SimConn struct {
 
 // NewSimConn creates a new simulated connection that drops packets if the
 // receive buffer is full.
-func NewSimConn(addr *net.UDPAddr, rtr Router) *SimConn {
-	return newSimConn(addr, rtr, false)
+func NewSimConn(addr *net.UDPAddr) *SimConn {
+	return newSimConn(addr, false)
 }
 
 // NewBlockingSimConn creates a new simulated connection that blocks if the
 // receive buffer is full. Does not drop packets.
-func NewBlockingSimConn(addr *net.UDPAddr, rtr Router) *SimConn {
-	return newSimConn(addr, rtr, true)
+func NewBlockingSimConn(addr *net.UDPAddr) *SimConn {
+	return newSimConn(addr, true)
 }
 
-func newSimConn(addr *net.UDPAddr, rtr Router, block bool) *SimConn {
+func newSimConn(addr *net.UDPAddr, block bool) *SimConn {
 	c := &SimConn{
 		recvBackPressure: block,
-		router:           rtr,
 		myAddr:           addr,
 		packetsToRead:    make(chan Packet, 32),
 		closedChan:       make(chan struct{}),
 		deadlineUpdated:  make(chan struct{}, 1),
 	}
-	rtr.AddNode(addr, c)
 	return c
+}
+
+func (c *SimConn) SetUpPacketReceiver(r PacketReceiver) {
+	c.upPacketReceiver = r
 }
 
 type ConnStats struct {
@@ -221,7 +225,11 @@ func (c *SimConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		To:   addr,
 		buf:  slices.Clone(p),
 	}
-	return len(p), c.router.SendPacket(pkt)
+	if c.upPacketReceiver == nil {
+		panic("upPacketReceiver is nil. Did you forget to call simconn.SetUpPacketReceiver?")
+	}
+	c.upPacketReceiver.RecvPacket(pkt)
+	return len(p), nil
 }
 
 func (c *SimConn) UnicastAddr() net.Addr {

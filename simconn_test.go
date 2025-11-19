@@ -18,8 +18,13 @@ func TestSimConnBasicConnectivity(t *testing.T) {
 	addr1 := &net.UDPAddr{IP: IntToPublicIPv4(1), Port: 1234}
 	addr2 := &net.UDPAddr{IP: IntToPublicIPv4(2), Port: 1234}
 
-	conn1 := NewSimConn(addr1, router)
-	conn2 := NewSimConn(addr2, router)
+	conn1 := NewSimConn(addr1)
+	conn1.SetUpPacketReceiver(router)
+	router.AddNode(conn1.UnicastAddr(), conn1)
+
+	conn2 := NewSimConn(addr2)
+	conn2.SetUpPacketReceiver(router)
+	router.AddNode(conn2.UnicastAddr(), conn2)
 
 	// Test sending data from conn1 to conn2
 	testData := []byte("hello world")
@@ -48,7 +53,9 @@ func TestSimConnDeadlines(t *testing.T) {
 	router := &PerfectRouter{}
 
 	addr1 := &net.UDPAddr{IP: IntToPublicIPv4(1), Port: 1234}
-	conn := NewSimConn(addr1, router)
+	conn := NewSimConn(addr1)
+	conn.SetUpPacketReceiver(router)
+	router.AddNode(conn.UnicastAddr(), conn)
 
 	t.Run("read deadline", func(t *testing.T) {
 		deadline := time.Now().Add(10 * time.Millisecond)
@@ -74,7 +81,9 @@ func TestSimConnClose(t *testing.T) {
 	router := &PerfectRouter{}
 
 	addr1 := &net.UDPAddr{IP: IntToPublicIPv4(1), Port: 1234}
-	conn := NewSimConn(addr1, router)
+	conn := NewSimConn(addr1)
+	conn.SetUpPacketReceiver(router)
+	router.AddNode(conn.UnicastAddr(), conn)
 
 	err := conn.Close()
 	require.NoError(t, err)
@@ -96,7 +105,9 @@ func TestSimConnLocalAddr(t *testing.T) {
 	router := &PerfectRouter{}
 
 	addr1 := &net.UDPAddr{IP: IntToPublicIPv4(1), Port: 1234}
-	conn := NewSimConn(addr1, router)
+	conn := NewSimConn(addr1)
+	conn.SetUpPacketReceiver(router)
+	router.AddNode(conn.UnicastAddr(), conn)
 
 	// Test default local address
 	require.Equal(t, addr1, conn.LocalAddr())
@@ -107,111 +118,34 @@ func TestSimConnLocalAddr(t *testing.T) {
 	require.Equal(t, customAddr, conn.LocalAddr())
 }
 
-func TestSimConnDeadlinesWithLatency(t *testing.T) {
-	router := &FixedLatencyRouter{
-		PerfectRouter: PerfectRouter{},
-		latency:       100 * time.Millisecond,
-	}
-
-	addr1 := &net.UDPAddr{IP: IntToPublicIPv4(1), Port: 1234}
-	addr2 := &net.UDPAddr{IP: IntToPublicIPv4(2), Port: 1234}
-
-	conn1 := NewSimConn(addr1, router)
-	conn2 := NewSimConn(addr2, router)
-
-	reset := func() {
-		router.RemoveNode(addr1)
-		router.RemoveNode(addr2)
-
-		conn1 = NewSimConn(addr1, router)
-		conn2 = NewSimConn(addr2, router)
-	}
-
-	t.Run("write succeeds within deadline", func(t *testing.T) {
-		deadline := time.Now().Add(200 * time.Millisecond)
-		err := conn1.SetWriteDeadline(deadline)
-		require.NoError(t, err)
-
-		n, err := conn1.WriteTo([]byte("test"), addr2)
-		require.NoError(t, err)
-		require.Equal(t, 4, n)
-		reset()
-	})
-
-	t.Run("write fails after past deadline", func(t *testing.T) {
-		deadline := time.Now().Add(-time.Second) // Already expired
-		err := conn1.SetWriteDeadline(deadline)
-		require.NoError(t, err)
-
-		_, err = conn1.WriteTo([]byte("test"), addr2)
-		require.ErrorIs(t, err, ErrDeadlineExceeded)
-		reset()
-	})
-
-	t.Run("read succeeds within deadline", func(t *testing.T) {
-		// Reset deadline and send a message
-		conn2.SetReadDeadline(time.Time{})
-		testData := []byte("hello")
-		deadline := time.Now().Add(200 * time.Millisecond)
-		conn1.SetWriteDeadline(deadline)
-		_, err := conn1.WriteTo(testData, addr2)
-		require.NoError(t, err)
-
-		// Set read deadline and try to read
-		deadline = time.Now().Add(200 * time.Millisecond)
-		err = conn2.SetReadDeadline(deadline)
-		require.NoError(t, err)
-
-		buf := make([]byte, 1024)
-		n, addr, err := conn2.ReadFrom(buf)
-		require.NoError(t, err)
-		require.Equal(t, addr1, addr)
-		require.Equal(t, testData, buf[:n])
-		reset()
-	})
-
-	t.Run("read fails after deadline", func(t *testing.T) {
-		defer reset()
-		// Set a short deadline
-		deadline := time.Now().Add(50 * time.Millisecond) // Less than router latency
-		err := conn2.SetReadDeadline(deadline)
-		require.NoError(t, err)
-
-		var wg sync.WaitGroup
-		defer wg.Wait()
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			// Send data after setting deadline
-			_, err := conn1.WriteTo([]byte("test"), addr2)
-			require.NoError(t, err)
-		}()
-
-		// Read should fail due to deadline
-		buf := make([]byte, 1024)
-		_, _, err = conn2.ReadFrom(buf)
-		require.ErrorIs(t, err, ErrDeadlineExceeded)
-	})
-}
-
 func TestSimpleHolePunch(t *testing.T) {
 	router := &SimpleFirewallRouter{
 		nodes: make(map[string]*simpleNodeFirewall),
 	}
 
 	// Create two peers
-	addr1 := &net.UDPAddr{IP: IntToPublicIPv4(1), Port: 1234}
-	addr2 := &net.UDPAddr{IP: IntToPublicIPv4(2), Port: 1234}
+	addr1 := &net.UDPAddr{IP: IntToPublicIPv4(0), Port: 1234}
+	addr2 := &net.UDPAddr{IP: IntToPublicIPv4(1), Port: 1234}
 
-	peer1 := NewSimConn(addr1, router)
-	peer2 := NewSimConn(addr2, router)
+	peer1 := NewSimConn(addr1)
+	peer1.SetUpPacketReceiver(router)
+	router.AddNode(peer1.UnicastAddr(), peer1)
+
+	peer2 := NewSimConn(addr2)
+	peer2.SetUpPacketReceiver(router)
+	router.AddNode(peer2.UnicastAddr(), peer2)
 
 	reset := func() {
 		router.RemoveNode(addr1)
 		router.RemoveNode(addr2)
 
-		peer1 = NewSimConn(addr1, router)
-		peer2 = NewSimConn(addr2, router)
+		peer1 = NewSimConn(addr1)
+		peer1.SetUpPacketReceiver(router)
+		router.AddNode(peer1.UnicastAddr(), peer1)
+
+		peer2 = NewSimConn(addr2)
+		peer2.SetUpPacketReceiver(router)
+		router.AddNode(peer2.UnicastAddr(), peer2)
 	}
 
 	// Initially, direct communication between peer1 and peer2 should fail

@@ -2,8 +2,8 @@ package simnet
 
 import (
 	"container/heap"
-	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
 	"sync"
@@ -102,15 +102,14 @@ type PerfectRouter struct {
 	nodes addrMap[PacketReceiver]
 }
 
-// SendPacket implements Router.
-func (r *PerfectRouter) SendPacket(p Packet) error {
+func (r *PerfectRouter) RecvPacket(p Packet) {
 	conn, ok := r.nodes.Get(p.To)
 	if !ok {
-		return errors.New("unknown destination")
+		slog.Default().Error("unknown destination. Dropping packet")
+		return
 	}
 
 	conn.RecvPacket(p)
-	return nil
 }
 
 func (r *PerfectRouter) AddNode(addr net.Addr, conn PacketReceiver) {
@@ -133,9 +132,8 @@ type VariableLatencyRouter struct {
 	h           packetHeap
 }
 
-func (r *VariableLatencyRouter) SendPacket(p Packet) error {
+func (r *VariableLatencyRouter) RecvPacket(p Packet) {
 	r.packets <- p
-	return nil
 }
 
 func (r *VariableLatencyRouter) Start(wg *sync.WaitGroup) {
@@ -168,7 +166,7 @@ func (r *VariableLatencyRouter) Start(wg *sync.WaitGroup) {
 				now := time.Now()
 				for len(r.h) > 0 && !r.h[0].deliveryTime.After(now) {
 					p := heap.Pop(&r.h).(packetWithDeliveryTimeAndOrder).Packet
-					r.PerfectRouter.SendPacket(*p)
+					r.PerfectRouter.RecvPacket(*p)
 				}
 				if len(r.h) > 0 {
 					nextDelivery = r.h[0].deliveryTime
@@ -237,27 +235,28 @@ func (r *SimpleFirewallRouter) SetAddrPubliclyReachable(addr net.Addr) {
 	r.publiclyReachableAddrs[addr.String()] = true
 }
 
-func (r *SimpleFirewallRouter) SendPacket(p Packet) error {
+func (r *SimpleFirewallRouter) RecvPacket(p Packet) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	toNode, exists := r.nodes[p.To.String()]
 	if !exists {
-		return errors.New("unknown destination")
+		slog.Default().Error("unknown destination")
+		return
 	}
 
 	// Record that this node is sending a packet to the destination
 	fromNode, exists := r.nodes[p.From.String()]
 	if !exists {
-		return errors.New("unknown source")
+		slog.Default().Error("unknown source")
+		return
 	}
 	fromNode.MarkPacketSentOut(p)
 
 	if !toNode.IsPacketInAllowed(p) {
-		return nil // Silently drop blocked packets
+		return // Silently drop blocked packets
 	}
 
 	toNode.node.RecvPacket(p)
-	return nil
 }
 
 func (r *SimpleFirewallRouter) AddNode(addr net.Addr, conn PacketReceiver) {
