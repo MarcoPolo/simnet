@@ -104,7 +104,7 @@ func newLinkDriver(
 		newPacket:   make(chan Packet, 1_024),
 		q:           newFqCoDel(target, interval, quantum, flowCount),
 		closeSignal: closeSignal,
-		rateLink:    NewRateLink(bandwidth, 10*mtu, receiver),
+		rateLink:    NewRateLink(bandwidth, mtu, receiver),
 	}
 }
 
