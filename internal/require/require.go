@@ -1,10 +1,10 @@
 package require
 
 import (
-    "errors"
-    "fmt"
-    "reflect"
-    "testing"
+	"errors"
+	"fmt"
+	"reflect"
+	"testing"
 )
 
 // NoError fails the test if err is not nil.
@@ -25,15 +25,16 @@ func ErrorIs(t *testing.T, err error, target error, msgAndArgs ...any) {
 
 // Equal fails the test if expected != actual using reflect.DeepEqual.
 func Equal(t *testing.T, expected, actual any, msgAndArgs ...any) {
-    t.Helper()
-    if !reflect.DeepEqual(expected, actual) {
-        failNow(t, fmt.Sprintf("not equal\nexpected: %#v\nactual:   %#v", expected, actual), msgAndArgs...)
-    }
+	t.Helper()
+	if !reflect.DeepEqual(expected, actual) {
+		failNow(t, fmt.Sprintf("not equal\nexpected: %#v\nactual:   %#v", expected, actual), msgAndArgs...)
+	}
 }
 
 func failNow(t *testing.T, baseMsg string, msgAndArgs ...any) {
-    if len(msgAndArgs) > 0 {
-        baseMsg = baseMsg + ": " + fmt.Sprint(msgAndArgs...)
-    }
-    t.Fatalf("%s", baseMsg)
+	t.Helper()
+	if len(msgAndArgs) > 0 {
+		baseMsg = baseMsg + ": " + fmt.Sprint(msgAndArgs...)
+	}
+	t.Fatalf("%s", baseMsg)
 }
