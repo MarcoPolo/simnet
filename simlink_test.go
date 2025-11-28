@@ -91,10 +91,10 @@ func TestBandwidthLimiterAndLatency_synctest(t *testing.T) {
 
 				// Wait for delayed packets to be sent
 				time.Sleep(40 * time.Millisecond)
-				fmt.Printf("sent: %d\n", bytesSent)
+				t.Logf("sent: %d", bytesSent)
 
 				link.Close()
-				fmt.Printf("bytesRead: %d\n", bytesRead)
+				t.Logf("read: %d", bytesRead)
 				recvStartTime := <-recvStartTimeChan
 				duration := time.Since(recvStartTime)
 
@@ -104,7 +104,7 @@ func TestBandwidthLimiterAndLatency_synctest(t *testing.T) {
 				if testUpload {
 					// Uplink test: expect near-zero latency
 					expectedLatency = 0
-					t.Logf("observed latency: %s (uplink is instant)\n", observedLatency)
+					t.Logf("observed latency: %s (uplink is instant)", observedLatency)
 					if observedLatency > 5*time.Millisecond {
 						t.Fatalf("observed latency %s is too high for instant uplink", observedLatency)
 					}
@@ -112,16 +112,16 @@ func TestBandwidthLimiterAndLatency_synctest(t *testing.T) {
 					// Downlink test: expect configured latency
 					expectedLatency = downlinkLatency
 					percentErrorLatency := math.Abs(observedLatency.Seconds()-expectedLatency.Seconds()) / expectedLatency.Seconds()
-					t.Logf("observed latency: %s, expected latency: %s, percent error: %f\n", observedLatency, expectedLatency, percentErrorLatency)
+					t.Logf("observed latency: %s, expected latency: %s, percent error: %f", observedLatency, expectedLatency, percentErrorLatency)
 					if percentErrorLatency > 0.20 {
 						t.Fatalf("observed latency %s is wrong", observedLatency)
 					}
 				}
 
 				observedSpeed := 8 * float64(bytesRead) / duration.Seconds()
-				t.Logf("observed speed: %f Mbps over %s\n", observedSpeed/Mibps, duration)
+				t.Logf("observed speed: %f Mbps over %s", observedSpeed/Mibps, duration)
 				percentErrorSpeed := math.Abs(observedSpeed-float64(expectedSpeed)) / float64(expectedSpeed)
-				t.Logf("observed speed: %f Mbps, expected speed: %d Mbps, percent error: %f\n", observedSpeed/Mibps, expectedSpeed/Mibps, percentErrorSpeed)
+				t.Logf("observed speed: %f Mbps, expected speed: %d Mbps, percent error: %f", observedSpeed/Mibps, expectedSpeed/Mibps, percentErrorSpeed)
 				if percentErrorSpeed > 0.20 {
 					t.Fatalf("observed speed %f Mbps is too far from expected speed %d Mbps. Percent error: %f", observedSpeed/Mibps, expectedSpeed/Mibps, percentErrorSpeed)
 				}
@@ -207,25 +207,25 @@ func TestBandwidthLimiterAndLatencyConnectedLinks_synctest(t *testing.T) {
 
 		// Wait for delayed packets to be sent
 		time.Sleep(40 * time.Millisecond)
-		fmt.Printf("sent: %d\n", bytesSent)
+		t.Logf("sent: %d", bytesSent)
 
 		link1.Close()
 		link2.Close()
-		fmt.Printf("bytesRead: %d\n", bytesRead)
+		t.Logf("read: %d", bytesRead)
 		recvStartTime := <-recvStartTimeChan
 		duration := time.Since(recvStartTime)
 
 		observedLatency := recvStartTime.Sub(sendStartTime)
 		percentErrorLatency := math.Abs(observedLatency.Seconds()-expectedLatency.Seconds()) / expectedLatency.Seconds()
-		t.Logf("observed latency: %s, expected latency: %s, percent error: %f\n", observedLatency, expectedLatency, percentErrorLatency)
+		t.Logf("observed latency: %s, expected latency: %s, percent error: %f", observedLatency, expectedLatency, percentErrorLatency)
 		if percentErrorLatency > 0.20 {
 			t.Fatalf("observed latency %s is wrong", observedLatency)
 		}
 
 		observedSpeed := 8 * float64(bytesRead) / duration.Seconds()
-		t.Logf("observed speed: %f Mbps over %s\n", observedSpeed/Mibps, duration)
+		t.Logf("observed speed: %f Mbps over %s", observedSpeed/Mibps, duration)
 		percentErrorSpeed := math.Abs(observedSpeed-float64(expectedSpeed)) / float64(expectedSpeed)
-		t.Logf("observed speed: %f Mbps, expected speed: %d Mbps, percent error: %f\n", observedSpeed/Mibps, expectedSpeed/Mibps, percentErrorSpeed)
+		t.Logf("observed speed: %f Mbps, expected speed: %d Mbps, percent error: %f", observedSpeed/Mibps, expectedSpeed/Mibps, percentErrorSpeed)
 		if percentErrorSpeed > 0.20 {
 			t.Fatalf("observed speed %f Mbps is too far from expected speed %d Mbps. Percent error: %f", observedSpeed/Mibps, expectedSpeed/Mibps, percentErrorSpeed)
 		}
