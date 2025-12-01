@@ -1,6 +1,7 @@
 package simnet
 
 import (
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -26,6 +27,9 @@ type Simnet struct {
 	// have this function return the expected latency.
 	LatencyFunc func(*Packet) time.Duration
 
+	// Optional, if unset will use the default slog logger.
+	Logger *slog.Logger
+
 	started     bool
 	closeSignal chan struct{}
 	wg          sync.WaitGroup
@@ -46,6 +50,11 @@ type NodeBiDiLinkSettings struct {
 // Start starts the simulated network and related goroutines
 func (n *Simnet) Start() {
 	n.started = true
+	if n.Logger == nil {
+		n.Logger = slog.Default()
+	}
+	// Log whenever the router fails to route a packet (likely a test setup bug).
+	n.router.OnDrop = LogOnDrop(n.Logger)
 	n.router.LatencyFunc = n.LatencyFunc
 	n.router.CloseSignal = n.closeSignal
 	n.router.Start(&n.wg)

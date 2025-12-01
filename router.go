@@ -10,6 +10,22 @@ import (
 	"time"
 )
 
+type DropReason string
+
+const (
+	DropReasonUnknownDestination DropReason = "unknown destination"
+	DropReasonUnknownSource      DropReason = "unknown source"
+	DropReasonFirewalled         DropReason = "Packet firewalled"
+)
+
+type OnDrop func(packet Packet, reason DropReason)
+
+func LogOnDrop(logger *slog.Logger) OnDrop {
+	return func(packet Packet, reason DropReason) {
+		logger.Error("Dropping packet", "from", packet.From, "to", packet.To, "reason", reason)
+	}
+}
+
 type ipPortKey struct {
 	ip    string
 	port  uint16
@@ -99,13 +115,16 @@ func (m *addrMap[V]) Delete(addr net.Addr) error {
 // PerfectRouter is a router that has no latency or jitter and can route to
 // every node
 type PerfectRouter struct {
-	nodes addrMap[PacketReceiver]
+	OnDrop OnDrop
+	nodes  addrMap[PacketReceiver]
 }
 
 func (r *PerfectRouter) RecvPacket(p Packet) {
 	conn, ok := r.nodes.Get(p.To)
 	if !ok {
-		slog.Default().Error("unknown destination. Dropping packet")
+		if r.OnDrop != nil {
+			r.OnDrop(p, DropReasonUnknownDestination)
+		}
 		return
 	}
 
@@ -211,6 +230,7 @@ func (f *simpleNodeFirewall) String() string {
 }
 
 type SimpleFirewallRouter struct {
+	OnDrop                 OnDrop
 	mu                     sync.Mutex
 	nodes                  map[string]*simpleNodeFirewall
 	publiclyReachableAddrs map[string]bool
@@ -240,20 +260,27 @@ func (r *SimpleFirewallRouter) RecvPacket(p Packet) {
 	defer r.mu.Unlock()
 	toNode, exists := r.nodes[p.To.String()]
 	if !exists {
-		slog.Default().Error("unknown destination")
+		if r.OnDrop != nil {
+			r.OnDrop(p, DropReasonUnknownDestination)
+		}
 		return
 	}
 
 	// Record that this node is sending a packet to the destination
 	fromNode, exists := r.nodes[p.From.String()]
 	if !exists {
-		slog.Default().Error("unknown source")
+		if r.OnDrop != nil {
+			r.OnDrop(p, DropReasonUnknownSource)
+		}
 		return
 	}
 	fromNode.MarkPacketSentOut(p)
 
 	if !toNode.IsPacketInAllowed(p) {
-		return // Silently drop blocked packets
+		if r.OnDrop != nil {
+			r.OnDrop(p, DropReasonFirewalled)
+		}
+		return
 	}
 
 	toNode.node.RecvPacket(p)
