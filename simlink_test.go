@@ -134,19 +134,19 @@ func TestBandwidthLimiter_synctest(t *testing.T) {
 
 				// Wait for delayed packets to be sent
 				time.Sleep(40 * time.Millisecond)
-				t.Logf("sent: %d\n", bytesSent)
+				t.Logf("sent: %d", bytesSent)
 
 				close(closeSignal)
 				wg.Wait()
 
-				t.Logf("bytesRead: %d\n", bytesRead)
+				t.Logf("read: %d", bytesRead)
 				recvStartTime := <-recvStartTimeChan
 				duration := time.Since(recvStartTime)
 
 				observedSpeed := 8 * float64(bytesRead) / duration.Seconds()
-				t.Logf("observed speed: %f Mbps over %s\n", observedSpeed/Mibps, duration)
+				t.Logf("observed speed: %f Mbps over %s", observedSpeed/Mibps, duration)
 				percentErrorSpeed := math.Abs(observedSpeed-float64(expectedSpeed)) / float64(expectedSpeed)
-				t.Logf("observed speed: %f Mbps, expected speed: %d Mbps, percent error: %f\n", observedSpeed/Mibps, expectedSpeed/Mibps, percentErrorSpeed)
+				t.Logf("observed speed: %f Mbps, expected speed: %d Mbps, percent error: %f", observedSpeed/Mibps, expectedSpeed/Mibps, percentErrorSpeed)
 				if percentErrorSpeed > 0.20 {
 					t.Fatalf("observed speed %f Mbps is too far from expected speed %d Mbps. Percent error: %f", observedSpeed/Mibps, expectedSpeed/Mibps, percentErrorSpeed)
 				}
