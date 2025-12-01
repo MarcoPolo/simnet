@@ -49,6 +49,7 @@ type NodeBiDiLinkSettings struct {
 
 // Start starts the simulated network and related goroutines
 func (n *Simnet) Start() {
+	n.init()
 	n.started = true
 	if n.Logger == nil {
 		n.Logger = slog.Default()
@@ -76,10 +77,6 @@ func (n *Simnet) init() {
 
 func (n *Simnet) NewEndpoint(addr *net.UDPAddr, linkSettings NodeBiDiLinkSettings) *SimConn {
 	n.init()
-	if n.started {
-		panic("Must add endpoints before starting the network")
-	}
-
 	c := NewBlockingSimConn(addr)
 	link := NewSimlink(
 		n.closeSignal,
@@ -91,6 +88,9 @@ func (n *Simnet) NewEndpoint(addr *net.UDPAddr, linkSettings NodeBiDiLinkSetting
 	n.router.AddNode(addr, link.down)
 
 	n.links = append(n.links, link)
+	if n.started {
+		link.Start(&n.wg)
+	}
 
 	return c
 }

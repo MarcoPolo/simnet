@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/marcopolo/simnet"
+	"github.com/marcopolo/simnet/internal/require"
 )
 
 // Example showing a simple echo using Simnet and the returned net.PacketConn.
@@ -168,5 +169,48 @@ func TestSimnet_pingWithDelay(t *testing.T) {
 		if err := <-serverDone; err != nil {
 			t.Fatalf("Server error: %v", err)
 		}
+	})
+}
+
+func TestSimnet_AddEndpointAfterStart(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		const latency = 400 * time.Millisecond
+		// Create the simulated network and two endpoints
+		n := &simnet.Simnet{
+			LatencyFunc: func(p *simnet.Packet) time.Duration {
+				return latency
+			},
+		}
+		n.Start()
+		defer n.Close()
+
+		settings := simnet.NodeBiDiLinkSettings{
+			Downlink: simnet.LinkSettings{BitsPerSecond: 10 * simnet.Mibps},
+			Uplink:   simnet.LinkSettings{BitsPerSecond: 10 * simnet.Mibps},
+		}
+
+		clientAddr := &net.UDPAddr{IP: net.ParseIP("1.0.0.1"), Port: 9001}
+		serverAddr := &net.UDPAddr{IP: net.ParseIP("1.0.0.2"), Port: 9002}
+
+		client := n.NewEndpoint(clientAddr, settings)
+		server := n.NewEndpoint(serverAddr, settings)
+
+		go func() {
+			buf := make([]byte, 1024)
+			server.SetReadDeadline(time.Now().Add(10 * time.Second))
+			n, src, err := server.ReadFrom(buf)
+			if err != nil {
+				panic(err)
+			}
+			server.WriteTo(buf[:n], src)
+		}()
+
+		_, err := client.WriteTo([]byte("echo"), serverAddr)
+		require.NoError(t, err)
+
+		buf := make([]byte, 1024)
+		nRead, _, err := client.ReadFrom(buf)
+		require.NoError(t, err)
+		require.Equal(t, string(buf[:nRead]), "echo")
 	})
 }
