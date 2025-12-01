@@ -113,7 +113,7 @@ func (d *linkDriver) RecvPacket(p Packet) {
 }
 
 func (d *linkDriver) Start(wg *sync.WaitGroup) {
-	wg.Go(func() {
+	wgGo(wg, func() {
 		deqTimer := time.NewTimer(0)
 		deqTimer.Stop()
 		var pendingPacket *Packet

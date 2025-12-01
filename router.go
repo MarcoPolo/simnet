@@ -155,11 +155,20 @@ func (r *VariableLatencyRouter) RecvPacket(p Packet) {
 	r.packets <- p
 }
 
+// wgGo is the same as Go 1.25's wg.Go. Remove this when Go 1.26 is out
+func wgGo(wg *sync.WaitGroup, f func()) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		f()
+	}()
+}
+
 func (r *VariableLatencyRouter) Start(wg *sync.WaitGroup) {
 	r.packets = make(chan Packet, 128)
 	heap.Init(&r.h)
 
-	wg.Go(func() {
+	wgGo(wg, func() {
 		var nextDelivery time.Time
 		deliveryTimer := time.NewTimer(0)
 		deliveryTimer.Stop()
